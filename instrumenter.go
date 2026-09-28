@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,8 +83,18 @@ type instrumenter struct {
 func (i *instrumenter) instrument(srcDir, singleFile, dstDir string) bool {
 	i.fset = token.NewFileSet()
 
+	// Only the files that the go command builds belong to the package.
+	// The other files may redeclare the same names,
+	// such as a function that is implemented once per platform,
+	// or they may even belong to another package,
+	// such as a 'package main' that is only run by 'go generate'.
 	isRelevant := func(info os.FileInfo) bool {
-		return singleFile == "" || info.Name() == singleFile
+		if singleFile != "" && info.Name() != singleFile {
+			return false
+		}
+		match, err := build.Default.MatchFile(srcDir, info.Name())
+		ok(err)
+		return match
 	}
 
 	// Comments are needed for build tags
@@ -150,7 +159,7 @@ func (i *instrumenter) resolveTypes(pkgsMap map[string]*ast.Package) {
 
 func (i *instrumenter) instrumentFile(filename string, astFile *ast.File, dstDir string) {
 	isTest := strings.HasSuffix(filename, "_test.go")
-	if (i.coverTest || !isTest) && shouldBuild(filename) {
+	if i.coverTest || !isTest {
 		i.instrumentFileNode(astFile)
 	}
 	if isTest {
@@ -996,13 +1005,6 @@ again:
 	}
 	ident, ok := e.(*ast.Ident)
 	return ok && ident.Name == "nil"
-}
-
-func shouldBuild(filename string) bool {
-	ctx := build.Context{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
-	m, err := ctx.MatchFile(filepath.Split(filename))
-	ok(err)
-	return m
 }
 
 func writeFile(filename string, content string) {

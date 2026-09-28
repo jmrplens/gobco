@@ -579,3 +579,24 @@ func Test_gobcoMain__issue38(t *testing.T) {
 	})
 	s.CheckEquals(stderr, "")
 }
+
+// Files that the go command doesn't build are not instrumented.
+// They may redeclare names from the other files,
+// or they may even belong to another package.
+// The files that the go command builds are instrumented,
+// even if their constraints refer to the release of the go toolchain.
+func Test_gobcoMain__build_constraints(t *testing.T) {
+	s := NewSuite(t)
+	defer s.TearDownTest()
+
+	stdout, stderr := s.RunMain(0, "gobco", "./testdata/constraints")
+
+	s.CheckEquals(s.GobcoLines(stdout), []string{
+		"Condition coverage: 1/4",
+		"testdata/constraints/default.go:10:5: " +
+			"condition \"x < 0\" was once false but never true",
+		"testdata/constraints/release.go:8:9: " +
+			"condition \"x == 0\" was never evaluated",
+	})
+	s.CheckEquals(stderr, "")
+}
