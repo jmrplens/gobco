@@ -41,6 +41,10 @@ type instrumenter struct {
 	listAll     bool // also list conditions that are covered
 	debugTypes  bool
 
+	// The build tags of 'go test', which decide
+	// which files belong to the package.
+	buildTags []string
+
 	fset *token.FileSet
 	pkg  map[*ast.Package]*types.Package
 	typ  map[ast.Expr]types.Type
@@ -82,6 +86,12 @@ type instrumenter struct {
 // If singleFile is given, only that file is instrumented.
 func (i *instrumenter) instrument(srcDir, singleFile, dstDir string) bool {
 	i.fset = token.NewFileSet()
+
+	// The source importer that resolves the imported packages
+	// always uses build.Default, so the build tags must be set there.
+	// Selecting the files in the package uses the same build context.
+	defer func(tags []string) { build.Default.BuildTags = tags }(build.Default.BuildTags)
+	build.Default.BuildTags = i.buildTags
 
 	// Only the files that the go command builds belong to the package.
 	// The other files may redeclare the same names,
